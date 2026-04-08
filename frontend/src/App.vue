@@ -13,7 +13,7 @@
         <button class="btn" :class="hasSchedule ? 'btn-warning' : 'btn-outline'" style="color:white;border-color:rgba(255,255,255,0.4)" @click="pinAll">
           📌 {{ allPinned ? '取消全部固定' : '保存排班' }}
         </button>
-        <button class="btn btn-outline" style="color:white;border-color:rgba(255,255,255,0.4)" @click="exportCSV">📄 导出排班表</button>
+        <button class="btn btn-outline" style="color:white;border-color:rgba(255,255,255,0.4)" @click="exportXLSX">📄 导出排班表</button>
       </div>
     </div>
 
@@ -277,8 +277,7 @@ import {
   LoadPeople,
   SavePeople,
   GenerateSchedule,
-  ExportCSV,
-  SaveExportFile,
+  ExportXLSX,
   UpdateShiftEntry
 } from '../wailsjs/go/main/App'
 
@@ -712,9 +711,16 @@ async function generateSchedule() {
   }
   const hasExisting = data.value.schedule.length > 0
   if (hasExisting) {
-    if (!confirm('已有排班数据，是否重新打乱生成？\n\n确定 = 全部重新排班\n取消 = 放弃')) return
-    // Clear all pinned days for full reshuffle
-    data.value.pinned_days = []
+    const choice = prompt(
+      '已有排班数据，请选择：\n\n1 = 保留已固定天数，只重新排未固定的天\n2 = 全部重新排班（清除所有固定）\n3 = 放弃\n\n请输入 1、2 或 3：'
+    )
+    if (choice === '1') {
+      // Keep pinned days, only regenerate unpinned
+    } else if (choice === '2') {
+      data.value.pinned_days = []
+    } else {
+      return
+    }
   }
   try {
     const result = await GenerateSchedule({
@@ -734,12 +740,10 @@ async function generateSchedule() {
   }
 }
 
-async function exportCSV() {
+async function exportXLSX() {
   try {
-    const csv = await ExportCSV(data.value)
-    const filename = `排班表_${year.value}年${month.value}月.csv`
-    await SaveExportFile(csv, filename)
-    showToast('✅ 已导出到 Downloads')
+    const path = await ExportXLSX(data.value)
+    showToast('✅ 已导出到 ' + path)
   } catch (e: any) {
     showToast('导出失败: ' + e)
   }

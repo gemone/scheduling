@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/xuri/excelize/v2"
 )
 
 // ==================== 数据模型 ====================
@@ -384,8 +386,11 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 
 // ==================== 导出 ====================
 
-func (a *App) ExportCSV(data MonthData) (string, error) {
-	var sb strings.Builder
+func (a *App) ExportXLSX(data MonthData) (string, error) {
+	f := excelize.NewFile()
+	defer f.Close()
+	sheet := "排班表"
+	f.SetSheetName("Sheet1", sheet)
 
 	daysInMonth := time.Date(data.Year, time.Month(data.Month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
 
@@ -400,41 +405,146 @@ func (a *App) ExportCSV(data MonthData) (string, error) {
 	}
 
 	weekdayNames := []string{"日", "一", "二", "三", "四", "五", "六"}
-	shiftOrder := []string{string(DayShift), string(NightShift), string(OffDuty)}
-	shiftLabel := map[string]string{
-		string(DayShift):   "白班",
-		string(NightShift): "夜班",
-		string(OffDuty):    "休假",
+	shiftOrder := []ShiftType{DayShift, NightShift, OffDuty}
+	shiftLabel := map[ShiftType]string{
+		DayShift:   "白班",
+		NightShift: "夜班",
+		OffDuty:    "休假",
 	}
 
-	// Title
-	sb.WriteString(fmt.Sprintf("%d年%d月 排班表\n\n", data.Year, data.Month))
+	// Styles
+	titleStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Size: 16},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Size: 11, Color: "FFFFFF"},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4f46e5"}, Pattern: 1},
+	})
+	dayStyle, _ := f.NewStyle(&excelize.Style{
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#fef3c7"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: true},
+	})
+	nightStyle, _ := f.NewStyle(&excelize.Style{
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#e0e7ff"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: true},
+	})
+	offStyle, _ := f.NewStyle(&excelize.Style{
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#f3f4f6"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: true},
+	})
+	shiftStyles := map[ShiftType]int{
+		DayShift:   dayStyle,
+		NightShift: nightStyle,
+		OffDuty:    offStyle,
+	}
+	labelStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Size: 11},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
 
-	// Header row: blank | 1日(一) | 2日(二) | ...
-	sb.WriteString("")
+	// Title row
+	titleText := fmt.Sprintf("%d年%d月 排班表", data.Year, data.Month)
+	f.SetCellValue(sheet, "A1", titleText)
+	f.SetCellStyle(sheet, "A1", "A1", titleStyle)
+
+	// Header row (row 3): blank | 1日(一) | 2日(二) | ...
+	headerRow := 3
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", headerRow), "")
 	for day := 1; day <= daysInMonth; day++ {
+		col, _ := excelize.CoordinatesToCellName(day+1, headerRow)
 		dow := time.Date(data.Year, time.Month(data.Month), day, 0, 0, 0, 0, time.UTC).Weekday()
-		sb.WriteString(fmt.Sprintf("\t%d日(%s)", day, weekdayNames[dow]))
+		f.SetCellValue(sheet, col, fmt.Sprintf("%d日(%s)", day, weekdayNames[dow]))
+		f.SetCellStyle(sheet, col, col, headerStyle)
 	}
-	sb.WriteString("\n")
+	// Style the label column header too
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", headerRow), fmt.Sprintf("A%d", headerRow), headerStyle)
 
-	// One row per shift type, cells contain person names
-	for _, st := range shiftOrder {
+	// Data rows: one per shift type
+	for rowIdx, st := range shiftOrder {
+		row := headerRow + 1 + rowIdx
 		label := shiftLabel[st]
-		sb.WriteString(label)
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", row), label)
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), labelStyle)
 		for day := 1; day <= daysInMonth; day++ {
 			dateStr := fmt.Sprintf("%04d-%02d-%02d", data.Year, data.Month, day)
-			names := typeByDate[dateStr][st]
+			names := typeByDate[dateStr][string(st)]
 			cell := ""
 			if len(names) > 0 {
-				cell = strings.Join(names, "、")
+				cell = strings.Join(names, "\n")
 			}
-			sb.WriteString("\t" + cell)
+			col, _ := excelize.CoordinatesToCellName(day+1, row)
+			f.SetCellValue(sheet, col, cell)
+			style, ok := shiftStyles[st]
+			if ok {
+				f.SetCellStyle(sheet, col, col, style)
+			}
 		}
-		sb.WriteString("\n")
 	}
 
-	return sb.String(), nil
+	// Summary row
+	summaryRow := headerRow + 1 + len(shiftOrder) + 1
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", summaryRow), "统计")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", summaryRow), fmt.Sprintf("A%d", summaryRow), labelStyle)
+	for day := 1; day <= daysInMonth; day++ {
+		dateStr := fmt.Sprintf("%04d-%02d-%02d", data.Year, data.Month, day)
+		dayN := len(typeByDate[dateStr][string(DayShift)])
+		nightN := len(typeByDate[dateStr][string(NightShift)])
+		offN := len(typeByDate[dateStr][string(OffDuty)])
+		col, _ := excelize.CoordinatesToCellName(day+1, summaryRow)
+		f.SetCellValue(sheet, col, fmt.Sprintf("白%d 夜%d 休%d", dayN, nightN, offN))
+	}
+
+	// Per-person summary
+	peepRow := summaryRow + 2
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", peepRow), "人员统计")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", peepRow), fmt.Sprintf("A%d", peepRow), titleStyle)
+	peepRow++
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", peepRow), "姓名")
+	f.SetCellValue(sheet, fmt.Sprintf("B%d", peepRow), "白班")
+	f.SetCellValue(sheet, fmt.Sprintf("C%d", peepRow), "夜班")
+	f.SetCellValue(sheet, fmt.Sprintf("D%d", peepRow), "总计")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", peepRow), fmt.Sprintf("D%d", peepRow), headerStyle)
+	peepRow++
+
+	for _, p := range data.People {
+		dayCount := 0
+		nightCount := 0
+		for _, entry := range data.Schedule {
+			if entry.Person == p.Name {
+				switch entry.ShiftType {
+				case DayShift:
+					dayCount++
+				case NightShift:
+					nightCount++
+				}
+			}
+		}
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", peepRow), p.Name)
+		f.SetCellValue(sheet, fmt.Sprintf("B%d", peepRow), dayCount)
+		f.SetCellValue(sheet, fmt.Sprintf("C%d", peepRow), nightCount)
+		f.SetCellValue(sheet, fmt.Sprintf("D%d", peepRow), dayCount+nightCount)
+		peepRow++
+	}
+
+	// Column widths
+	f.SetColWidth(sheet, "A", "A", 10)
+	for day := 1; day <= daysInMonth; day++ {
+		colName, _ := excelize.ColumnNumberToName(day + 1)
+		f.SetColWidth(sheet, colName, colName, 12)
+	}
+
+	// Save
+	home, _ := os.UserHomeDir()
+	downloadDir := filepath.Join(home, "Downloads")
+	os.MkdirAll(downloadDir, 0755)
+	filename := fmt.Sprintf("排班表_%d年%d月.xlsx", data.Year, data.Month)
+	filePath := filepath.Join(downloadDir, filename)
+	if err := f.SaveAs(filePath); err != nil {
+		return "", err
+	}
+	return filePath, nil
 }
 
 func (a *App) SaveExportFile(content, filename string) error {
