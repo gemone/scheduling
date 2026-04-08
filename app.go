@@ -386,101 +386,52 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 
 func (a *App) ExportCSV(data MonthData) (string, error) {
 	var sb strings.Builder
-	
+
 	daysInMonth := time.Date(data.Year, time.Month(data.Month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
-	
-	// Build lookup: date -> person -> shift
-	lookup := make(map[string]map[string]ShiftType)
+
+	// Build lookup: date -> shift_type -> []personName
+	typeByDate := make(map[string]map[string][]string)
 	for _, entry := range data.Schedule {
-		if lookup[entry.Date] == nil {
-			lookup[entry.Date] = map[string]ShiftType{}
+		if typeByDate[entry.Date] == nil {
+			typeByDate[entry.Date] = map[string][]string{}
 		}
-		lookup[entry.Date][entry.Person] = entry.ShiftType
+		st := string(entry.ShiftType)
+		typeByDate[entry.Date][st] = append(typeByDate[entry.Date][st], entry.Person)
+	}
+
+	weekdayNames := []string{"日", "一", "二", "三", "四", "五", "六"}
+	shiftOrder := []string{string(DayShift), string(NightShift), string(OffDuty)}
+	shiftLabel := map[string]string{
+		string(DayShift):   "白班",
+		string(NightShift): "夜班",
+		string(OffDuty):    "休假",
 	}
 
 	// Title
-	sb.WriteString(fmt.Sprintf("📅 %d年%d月 排班表\n\n", data.Year, data.Month))
+	sb.WriteString(fmt.Sprintf("%d年%d月 排班表\n\n", data.Year, data.Month))
 
-	// === Calendar view: one section per person ===
-	for _, p := range data.People {
-		sb.WriteString(fmt.Sprintf("【%s】 (总%02d 白%02d 夜%02d)\n", p.Name, p.MaxTotal, p.MaxDay, p.MaxNight))
-		
-		// Weekday header
-		sb.WriteString("|  一  |  二  |  三  |  四  |  五  |  六  |  日  |\n")
-		sb.WriteString("|------|------|------|------|------|------|------|\n")
-		
-		// Get first day offset (Monday=0)
-		firstDow := time.Date(data.Year, time.Month(data.Month), 1, 0, 0, 0, 0, time.UTC).Weekday()
-		offset := int(firstDow)
-		if offset == 0 {
-			offset = 6 // Sunday -> 6
-		} else {
-			offset-- // Monday=0, Tuesday=1, etc.
-		}
-		
-		// Build calendar grid for this person
-		pos := 0
-		// Leading empty cells
-		for pos < offset {
-			sb.WriteString("|      ")
-			pos++
-		}
-		
+	// Header row: blank | 1日(一) | 2日(二) | ...
+	sb.WriteString("")
+	for day := 1; day <= daysInMonth; day++ {
+		dow := time.Date(data.Year, time.Month(data.Month), day, 0, 0, 0, 0, time.UTC).Weekday()
+		sb.WriteString(fmt.Sprintf("\t%d日(%s)", day, weekdayNames[dow]))
+	}
+	sb.WriteString("\n")
+
+	// One row per shift type, cells contain person names
+	for _, st := range shiftOrder {
+		label := shiftLabel[st]
+		sb.WriteString(label)
 		for day := 1; day <= daysInMonth; day++ {
 			dateStr := fmt.Sprintf("%04d-%02d-%02d", data.Year, data.Month, day)
-			shift := string(lookup[dateStr][p.Name])
-			if shift == "" {
-				shift = "  -  "
-			} else {
-				// Center in 6 chars
-				switch shift {
-				case "白班":
-					shift = " ☀白班"
-				case "夜班":
-					shift = " 🌙夜班"
-				case "休":
-					shift = "  休  "
-				}
+			names := typeByDate[dateStr][st]
+			cell := ""
+			if len(names) > 0 {
+				cell = strings.Join(names, "、")
 			}
-			dayStr := fmt.Sprintf("%2d%s", day, shift)
-			sb.WriteString("|" + dayStr)
-			pos++
-			if pos%7 == 0 {
-				sb.WriteString("|\n")
-			}
-		}
-		
-		// Trailing empty cells
-		if pos%7 != 0 {
-			for pos%7 != 0 {
-				sb.WriteString("|      ")
-				pos++
-			}
-			sb.WriteString("|\n")
+			sb.WriteString("\t" + cell)
 		}
 		sb.WriteString("\n")
-	}
-
-	// === Summary table ===
-	sb.WriteString("═══ 排班统计 ═══\n")
-	sb.WriteString("姓名\t白班\t夜班\t休假\t合计\n")
-	for _, p := range data.People {
-		dayCount := 0
-		nightCount := 0
-		offCount := 0
-		for _, entry := range data.Schedule {
-			if entry.Person == p.Name {
-				switch entry.ShiftType {
-				case DayShift:
-					dayCount++
-				case NightShift:
-					nightCount++
-				case OffDuty:
-					offCount++
-				}
-			}
-		}
-		sb.WriteString(fmt.Sprintf("%s\t%d\t%d\t%d\t%d\n", p.Name, dayCount, nightCount, offCount, dayCount+nightCount))
 	}
 
 	return sb.String(), nil
