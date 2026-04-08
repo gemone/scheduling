@@ -18,6 +18,10 @@ export function LoadPeople() {
   return window['go']['main']['App']['LoadPeople']();
 }
 
+export function LoadRules() {
+  return window['go']['main']['App']['LoadRules']();
+}
+
 export function OpenFile(arg1) {
   return window['go']['main']['App']['OpenFile'](arg1);
 }
@@ -32,6 +36,10 @@ export function SaveMonthData(arg1) {
 
 export function SavePeople(arg1) {
   return window['go']['main']['App']['SavePeople'](arg1);
+}
+
+export function SaveRules(arg1) {
+  return window['go']['main']['App']['SaveRules'](arg1);
 }
 
 export function UpdateShiftEntry(arg1, arg2, arg3, arg4) {

@@ -106,31 +106,31 @@
             <div style="font-weight:600;margin-bottom:8px">💼 工作日</div>
             <div class="form-group">
               <label>白班人数</label>
-              <input v-model.number="data.rules.day_shift_per_day" type="number" min="0" @change="saveData" />
+              <input v-model.number="globalRules.day_shift_per_day" type="number" min="0" @change="saveGlobalRules" />
             </div>
             <div class="form-group">
               <label>夜班人数</label>
-              <input v-model.number="data.rules.night_shift_per_day" type="number" min="0" @change="saveData" />
+              <input v-model.number="globalRules.night_shift_per_day" type="number" min="0" @change="saveGlobalRules" />
             </div>
 
             <div style="font-weight:600;margin:12px 0 8px;border-top:1px solid var(--border-color);padding-top:12px">📅 周末（周六日）</div>
             <div class="form-group">
               <label>白班人数</label>
-              <input v-model.number="data.rules.weekend_day_shift" type="number" min="0" @change="saveData" />
+              <input v-model.number="globalRules.weekend_day_shift" type="number" min="0" @change="saveGlobalRules" />
             </div>
             <div class="form-group">
               <label>夜班人数</label>
-              <input v-model.number="data.rules.weekend_night_shift" type="number" min="0" @change="saveData" />
+              <input v-model.number="globalRules.weekend_night_shift" type="number" min="0" @change="saveGlobalRules" />
             </div>
 
             <div style="font-weight:600;margin:12px 0 8px;border-top:1px solid var(--border-color);padding-top:12px">🎆 法定节假日</div>
             <div class="form-group">
               <label>白班人数</label>
-              <input v-model.number="data.rules.holiday_day_shift" type="number" min="0" @change="saveData" />
+              <input v-model.number="globalRules.holiday_day_shift" type="number" min="0" @change="saveGlobalRules" />
             </div>
             <div class="form-group">
               <label>夜班人数</label>
-              <input v-model.number="data.rules.holiday_night_shift" type="number" min="0" @change="saveData" />
+              <input v-model.number="globalRules.holiday_night_shift" type="number" min="0" @change="saveGlobalRules" />
             </div>
             <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">💡 在日历上点击日期左上角图标可设定节假日/工作日</div>
 
@@ -321,6 +321,8 @@ import {
   SaveMonthData,
   LoadPeople,
   SavePeople,
+  LoadRules,
+  SaveRules,
   GenerateSchedule,
   ExportXLSX,
   OpenFile,
@@ -386,6 +388,16 @@ let toastTimer: ReturnType<typeof setTimeout> | null = null
 // Global people (shared across all months)
 const globalPeople = ref<Person[]>([])
 
+// Global rules (shared across all months)
+const globalRules = ref<ScheduleRule>({
+  day_shift_per_day: 1,
+  night_shift_per_day: 1,
+  weekend_day_shift: 1,
+  weekend_night_shift: 1,
+  holiday_day_shift: 1,
+  holiday_night_shift: 1,
+})
+
 // Per-month data (no people inside)
 const data = ref<MonthData>({
   people: [],
@@ -397,6 +409,8 @@ const data = ref<MonthData>({
   year: year.value,
   month: month.value,
 })
+// Sync: data.rules always points to globalRules
+data.value.rules = globalRules.value
 
 const newPerson = ref({
   name: '',
@@ -908,6 +922,25 @@ async function saveGlobalPeople() {
   }
 }
 
+async function loadGlobalRules() {
+  try {
+    const rules = await LoadRules()
+    globalRules.value = rules
+    data.value.rules = globalRules.value
+  } catch (e: any) {
+    console.error('Load rules failed:', e)
+  }
+}
+
+async function saveGlobalRules() {
+  data.value.rules = { ...globalRules.value }
+  try {
+    await SaveRules(globalRules.value)
+  } catch (e: any) {
+    console.error('Save rules failed:', e)
+  }
+}
+
 async function loadData() {
   try {
     const loaded = await LoadMonthData(year.value, month.value)
@@ -915,8 +948,9 @@ async function loadData() {
     if (!data.value.pinned_days) {
       data.value.pinned_days = []
     }
-    // Always use global people
+    // Always use global people and rules
     data.value.people = [...globalPeople.value]
+    data.value.rules = { ...globalRules.value }
   } catch (e: any) {
     console.error('Load failed:', e)
   }
@@ -947,6 +981,7 @@ watch([year, month], () => {
 
 onMounted(async () => {
   await loadGlobalPeople()
+  await loadGlobalRules()
   await loadData()
 })
 </script>

@@ -96,6 +96,10 @@ func (a *App) peoplePath() string {
 	return filepath.Join(a.dataDir, "people.json")
 }
 
+func (a *App) rulesPath() string {
+	return filepath.Join(a.dataDir, "rules.json")
+}
+
 func (a *App) LoadPeople() ([]Person, error) {
 	path := a.peoplePath()
 	b, err := os.ReadFile(path)
@@ -115,6 +119,27 @@ func (a *App) SavePeople(people []Person) error {
 		return err
 	}
 	return os.WriteFile(a.peoplePath(), b, 0644)
+}
+
+func (a *App) LoadRules() (ScheduleRule, error) {
+	path := a.rulesPath()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ScheduleRule{DayShiftPerDay: 1, NightShiftPerDay: 1, WeekendDayShift: 1, WeekendNightShift: 1, HolidayDayShift: 1, HolidayNightShift: 1}, nil
+	}
+	var rules ScheduleRule
+	if err := json.Unmarshal(b, &rules); err != nil {
+		return ScheduleRule{DayShiftPerDay: 1, NightShiftPerDay: 1, WeekendDayShift: 1, WeekendNightShift: 1, HolidayDayShift: 1, HolidayNightShift: 1}, nil
+	}
+	return rules, nil
+}
+
+func (a *App) SaveRules(rules ScheduleRule) error {
+	b, err := json.MarshalIndent(rules, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(a.rulesPath(), b, 0644)
 }
 
 // ==================== 数据持久化 ====================

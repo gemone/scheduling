@@ -10,6 +10,8 @@ export function LoadMonthData(arg1:number,arg2:number):Promise<main.MonthData>;
 
 export function LoadPeople():Promise<Array<main.Person>>;
 
+export function LoadRules():Promise<main.ScheduleRule>;
+
 export function OpenFile(arg1:string):Promise<void>;
 
 export function SaveExportFile(arg1:string,arg2:string):Promise<void>;
@@ -17,5 +19,7 @@ export function SaveExportFile(arg1:string,arg2:string):Promise<void>;
 export function SaveMonthData(arg1:main.MonthData):Promise<void>;
 
 export function SavePeople(arg1:Array<main.Person>):Promise<void>;
+
+export function SaveRules(arg1:main.ScheduleRule):Promise<void>;
 
 export function UpdateShiftEntry(arg1:main.MonthData,arg2:string,arg3:string,arg4:string):Promise<main.MonthData>;
