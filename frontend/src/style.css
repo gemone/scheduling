@@ -280,6 +280,35 @@ body {
   border: 1px solid var(--border);
 }
 
+.shift-tag.day-tag {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+.shift-tag.night-tag {
+  background: #e0e7ff;
+  border-color: #6366f1;
+  color: #3730a3;
+}
+.shift-tag.dim {
+  opacity: 0.35;
+  text-decoration: line-through;
+}
+.shift-tag.weekend-tag {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #166534;
+}
+.shift-tag.holiday-tag-sm {
+  background: #fce7f3;
+  border-color: #ec4899;
+  color: #9d174d;
+}
+.checkbox-row {
+  display: flex;
+  gap: 12px;
+}
+
 .person-card .remove-btn {
   position: absolute;
   top: 6px;
@@ -419,6 +448,39 @@ body {
 
 .calendar-day .day-number.weekend-num {
   color: var(--danger);
+}
+
+.calendar-day .day-number.holiday-num {
+  color: #e11d48;
+  font-weight: 700;
+}
+
+.calendar-day .day-number.workday-override-num {
+  color: #059669;
+  font-weight: 700;
+}
+
+.day-type-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 1px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.day-type-btn:hover {
+  opacity: 1;
+}
+
+.holiday-tag {
+  font-size: 9px;
+  background: #e11d48;
+  color: white;
+  padding: 0 3px;
+  border-radius: 3px;
+  margin-left: 2px;
+  vertical-align: super;
 }
 
 .shift-badge {

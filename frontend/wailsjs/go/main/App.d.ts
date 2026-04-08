@@ -10,6 +10,8 @@ export function LoadMonthData(arg1:number,arg2:number):Promise<main.MonthData>;
 
 export function LoadPeople():Promise<Array<main.Person>>;
 
+export function OpenFile(arg1:string):Promise<void>;
+
 export function SaveExportFile(arg1:string,arg2:string):Promise<void>;
 
 export function SaveMonthData(arg1:main.MonthData):Promise<void>;

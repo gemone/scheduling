@@ -19,6 +19,10 @@ export namespace main {
 	export class ScheduleRule {
 	    day_shift_per_day: number;
 	    night_shift_per_day: number;
+	    weekend_day_shift: number;
+	    weekend_night_shift: number;
+	    holiday_day_shift: number;
+	    holiday_night_shift: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScheduleRule(source);
@@ -28,6 +32,10 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.day_shift_per_day = source["day_shift_per_day"];
 	        this.night_shift_per_day = source["night_shift_per_day"];
+	        this.weekend_day_shift = source["weekend_day_shift"];
+	        this.weekend_night_shift = source["weekend_night_shift"];
+	        this.holiday_day_shift = source["holiday_day_shift"];
+	        this.holiday_night_shift = source["holiday_night_shift"];
 	    }
 	}
 	export class Vacation {
@@ -55,6 +63,10 @@ export namespace main {
 	    max_night: number;
 	    day_shift_pos: number;
 	    night_shift_pos: number;
+	    weekend_day_shift_pos: number;
+	    weekend_night_shift_pos: number;
+	    holiday_day_shift_pos: number;
+	    holiday_night_shift_pos: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Person(source);
@@ -70,6 +82,10 @@ export namespace main {
 	        this.max_night = source["max_night"];
 	        this.day_shift_pos = source["day_shift_pos"];
 	        this.night_shift_pos = source["night_shift_pos"];
+	        this.weekend_day_shift_pos = source["weekend_day_shift_pos"];
+	        this.weekend_night_shift_pos = source["weekend_night_shift_pos"];
+	        this.holiday_day_shift_pos = source["holiday_day_shift_pos"];
+	        this.holiday_night_shift_pos = source["holiday_night_shift_pos"];
 	    }
 	}
 	export class MonthData {
@@ -78,6 +94,7 @@ export namespace main {
 	    rules: ScheduleRule;
 	    schedule: ShiftEntry[];
 	    pinned_days: string[];
+	    day_types: Record<string, string>;
 	    year: number;
 	    month: number;
 	
@@ -92,6 +109,7 @@ export namespace main {
 	        this.rules = this.convertValues(source["rules"], ScheduleRule);
 	        this.schedule = this.convertValues(source["schedule"], ShiftEntry);
 	        this.pinned_days = source["pinned_days"];
+	        this.day_types = source["day_types"];
 	        this.year = source["year"];
 	        this.month = source["month"];
 	    }

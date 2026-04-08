@@ -18,6 +18,10 @@ export function LoadPeople() {
   return window['go']['main']['App']['LoadPeople']();
 }
 
+export function OpenFile(arg1) {
+  return window['go']['main']['App']['OpenFile'](arg1);
+}
+
 export function SaveExportFile(arg1, arg2) {
   return window['go']['main']['App']['SaveExportFile'](arg1, arg2);
 }

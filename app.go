@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/browser"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -31,14 +32,18 @@ type ShiftEntry struct {
 }
 
 type Person struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	MinTotal      int    `json:"min_total"`      // 强制最低排班总次数 (0=不强制)
-	MaxTotal      int    `json:"max_total"`      // 月最大排班总次数
-	MaxDay        int    `json:"max_day"`        // 月最大白班次数
-	MaxNight      int    `json:"max_night"`      // 月最大夜班次数
-	DayShiftPos   int    `json:"day_shift_pos"`   // 1=可白班 0=不可
-	NightShiftPos int    `json:"night_shift_pos"` // 1=可夜班 0=不可
+	ID                   string `json:"id"`
+	Name                 string `json:"name"`
+	MinTotal             int    `json:"min_total"`              // 强制最低排班总次数 (0=不强制)
+	MaxTotal             int    `json:"max_total"`              // 月最大排班总次数
+	MaxDay               int    `json:"max_day"`                // 月最大白班次数
+	MaxNight             int    `json:"max_night"`              // 月最大夜班次数
+	DayShiftPos          int    `json:"day_shift_pos"`          // 1=可工作日白班 0=不可
+	NightShiftPos        int    `json:"night_shift_pos"`        // 1=可工作日夜班 0=不可
+	WeekendDayShiftPos   int    `json:"weekend_day_shift_pos"`  // 1=可周末白班 0=不可
+	WeekendNightShiftPos int    `json:"weekend_night_shift_pos"`// 1=可周末夜班 0=不可
+	HolidayDayShiftPos   int    `json:"holiday_day_shift_pos"`  // 1=可节假日白班 0=不可
+	HolidayNightShiftPos int    `json:"holiday_night_shift_pos"`// 1=可节假日夜班 0=不可
 }
 
 type Vacation struct {
@@ -48,18 +53,23 @@ type Vacation struct {
 }
 
 type ScheduleRule struct {
-	DayShiftPerDay   int `json:"day_shift_per_day"`   // 每天白班人数
-	NightShiftPerDay int `json:"night_shift_per_day"` // 每天夜班人数
+	DayShiftPerDay        int `json:"day_shift_per_day"`        // 工作日白班人数
+	NightShiftPerDay      int `json:"night_shift_per_day"`      // 工作日夜班人数
+	WeekendDayShift       int `json:"weekend_day_shift"`        // 周末白班人数
+	WeekendNightShift     int `json:"weekend_night_shift"`      // 周末夜班人数
+	HolidayDayShift       int `json:"holiday_day_shift"`        // 法定节假日白班人数
+	HolidayNightShift     int `json:"holiday_night_shift"`      // 法定节假日夜班人数
 }
 
 type MonthData struct {
-	People     []Person     `json:"people"`
-	Vacations  []Vacation   `json:"vacations"`
-	Rules      ScheduleRule `json:"rules"`
-	Schedule   []ShiftEntry `json:"schedule"`
-	PinnedDays []string     `json:"pinned_days"` // 固定的日期列表 (YYYY-MM-DD)
-	Year       int          `json:"year"`
-	Month      int          `json:"month"`
+	People     []Person          `json:"people"`
+	Vacations  []Vacation        `json:"vacations"`
+	Rules      ScheduleRule      `json:"rules"`
+	Schedule   []ShiftEntry      `json:"schedule"`
+	PinnedDays []string          `json:"pinned_days"`  // 固定的日期列表 (YYYY-MM-DD)
+	DayTypes   map[string]string `json:"day_types"`    // 日期类型覆盖: "holiday" / "workday" (YYYY-MM-DD -> type)
+	Year       int               `json:"year"`
+	Month      int               `json:"month"`
 }
 
 // ==================== App ====================
@@ -129,9 +139,17 @@ func (a *App) LoadMonthData(year, month int) (*MonthData, error) {
 		return &MonthData{
 			People:     []Person{},
 			Vacations:  []Vacation{},
-			Rules:      ScheduleRule{DayShiftPerDay: 1, NightShiftPerDay: 1},
+			Rules: ScheduleRule{
+				DayShiftPerDay:    1,
+				NightShiftPerDay:  1,
+				WeekendDayShift:   1,
+				WeekendNightShift: 1,
+				HolidayDayShift:   1,
+				HolidayNightShift: 1,
+			},
 			Schedule:   []ShiftEntry{},
 			PinnedDays: []string{},
+			DayTypes:   map[string]string{},
 			Year:       year,
 			Month:      month,
 		}, nil
@@ -263,17 +281,64 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 		
 		dayCount := data.Rules.DayShiftPerDay
 		nightCount := data.Rules.NightShiftPerDay
+
+		// Determine day type: day_types override > natural weekend > workday
+		t := time.Date(data.Year, time.Month(data.Month), day, 0, 0, 0, 0, time.UTC)
+		dow := t.Weekday()
+		naturalWeekend := dow == time.Saturday || dow == time.Sunday
+		dateStrCheck := fmt.Sprintf("%04d-%02d-%02d", data.Year, data.Month, day)
+		
+		effectiveType := "workday" // default
+		if data.DayTypes != nil {
+			if dt, ok := data.DayTypes[dateStrCheck]; ok {
+				effectiveType = dt // "holiday" or "workday" override
+			} else if naturalWeekend {
+				effectiveType = "weekend"
+			}
+		} else if naturalWeekend {
+			effectiveType = "weekend"
+		}
+
+		switch effectiveType {
+		case "holiday":
+			if data.Rules.HolidayDayShift > 0 {
+				dayCount = data.Rules.HolidayDayShift
+			}
+			if data.Rules.HolidayNightShift > 0 {
+				nightCount = data.Rules.HolidayNightShift
+			}
+		case "weekend":
+			if data.Rules.WeekendDayShift > 0 {
+				dayCount = data.Rules.WeekendDayShift
+			}
+			if data.Rules.WeekendNightShift > 0 {
+				nightCount = data.Rules.WeekendNightShift
+			}
+		}
 		dayAssigned := 0
 		nightAssigned := 0
 		assigned := make(map[string]bool)
 
 		// === Assign day shifts ===
-		// Filter: exclude people who did night shift yesterday
+		// Filter: exclude people who did night shift yesterday, and check day-type-specific pos
+		canDayShift := func(p Person) bool {
+			switch effectiveType {
+			case "holiday":
+				return p.HolidayDayShiftPos == 1
+			case "weekend":
+				return p.WeekendDayShiftPos == 1
+			default:
+				return p.DayShiftPos == 1
+			}
+		}
 		var dayCandidates []string
 		for _, pid := range available {
 			p := personMap[pid]
 			if yesterdayNight != nil && yesterdayNight[p.Name] {
 				continue // 昨晚夜班，今天不能白班
+			}
+			if !canDayShift(p) {
+				continue
 			}
 			dayCandidates = append(dayCandidates, pid)
 		}
@@ -305,7 +370,7 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 			p := personMap[pid]
 			pc := counts[pid]
 			
-			if p.DayShiftPos == 1 && pc.Total < p.MaxTotal && pc.Day < p.MaxDay {
+			if canDayShift(p) && pc.Total < p.MaxTotal && pc.Day < p.MaxDay {
 				schedule = append(schedule, ShiftEntry{
 					Date:      dateStr,
 					Person:    p.Name,
@@ -319,9 +384,19 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 		}
 		
 		// === Assign night shifts ===
+		canNightShift := func(p Person) bool {
+			switch effectiveType {
+			case "holiday":
+				return p.HolidayNightShiftPos == 1
+			case "weekend":
+				return p.WeekendNightShiftPos == 1
+			default:
+				return p.NightShiftPos == 1
+			}
+		}
 		nightCandidates := make([]string, 0, len(available))
 		for _, pid := range available {
-			if !assigned[pid] {
+			if !assigned[pid] && canNightShift(personMap[pid]) {
 				nightCandidates = append(nightCandidates, pid)
 			}
 		}
@@ -353,7 +428,7 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 			p := personMap[pid]
 			pc := counts[pid]
 			
-			if p.NightShiftPos == 1 && pc.Total < p.MaxTotal && pc.Night < p.MaxNight {
+			if canNightShift(p) && pc.Total < p.MaxTotal && pc.Night < p.MaxNight {
 				schedule = append(schedule, ShiftEntry{
 					Date:      dateStr,
 					Person:    p.Name,
@@ -556,6 +631,10 @@ func (a *App) SaveExportFile(content, filename string) error {
 	os.MkdirAll(downloadDir, 0755)
 	path := filepath.Join(downloadDir, filename)
 	return os.WriteFile(path, []byte(content), 0644)
+}
+
+func (a *App) OpenFile(path string) error {
+	return browser.OpenFile(path)
 }
 
 // ==================== 手动编辑 ====================

@@ -13,7 +13,7 @@
         <button class="btn" :class="hasSchedule ? 'btn-warning' : 'btn-outline'" style="color:white;border-color:rgba(255,255,255,0.4)" @click="pinAll">
           📌 {{ allPinned ? '取消全部固定' : '保存排班' }}
         </button>
-        <button class="btn btn-outline" style="color:white;border-color:rgba(255,255,255,0.4)" @click="exportXLSX">📄 导出排班表</button>
+        <button class="btn btn-success" @click="exportXLSX">📄 导出排班表</button>
       </div>
     </div>
 
@@ -56,9 +56,22 @@
             </div>
             <div class="form-group">
               <label>可值班类型</label>
-              <div class="checkbox-group">
-                <label><input type="checkbox" v-model="newPerson.dayShiftPos" :true-value="1" :false-value="0" /> 白班</label>
-                <label><input type="checkbox" v-model="newPerson.nightShiftPos" :true-value="1" :false-value="0" /> 夜班</label>
+              <div class="checkbox-group" style="flex-direction:column;gap:6px">
+                <div style="font-size:11px;color:var(--text-secondary)">工作日</div>
+                <div class="checkbox-row">
+                  <label><input type="checkbox" v-model="newPerson.dayShiftPos" :true-value="1" :false-value="0" /> ☀白班</label>
+                  <label><input type="checkbox" v-model="newPerson.nightShiftPos" :true-value="1" :false-value="0" /> 🌙夜班</label>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary)">周末</div>
+                <div class="checkbox-row">
+                  <label><input type="checkbox" v-model="newPerson.weekendDayShiftPos" :true-value="1" :false-value="0" /> ☀白班</label>
+                  <label><input type="checkbox" v-model="newPerson.weekendNightShiftPos" :true-value="1" :false-value="0" /> 🌙夜班</label>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary)">节假日</div>
+                <div class="checkbox-row">
+                  <label><input type="checkbox" v-model="newPerson.holidayDayShiftPos" :true-value="1" :false-value="0" /> ☀白班</label>
+                  <label><input type="checkbox" v-model="newPerson.holidayNightShiftPos" :true-value="1" :false-value="0" /> 🌙夜班</label>
+                </div>
               </div>
             </div>
             <button v-if="!editingPersonId" class="btn btn-primary btn-block" @click="addPerson">➕ 添加人员</button>
@@ -75,8 +88,10 @@
                 <div class="limits">
                   <span v-if="p.min_total > 0" style="color:var(--primary)">✦{{ p.min_total }}</span>
                   <span>总计{{ p.max_total }}次</span>
-                  <span v-if="p.day_shift_pos">白{{ p.max_day }}次</span>
-                  <span v-if="p.night_shift_pos">夜{{ p.max_night }}次</span>
+                  <span class="shift-tag day-tag" :class="{ dim: !p.day_shift_pos }">☀白{{ p.day_shift_pos ? p.max_day : 'x' }}</span>
+                  <span class="shift-tag night-tag" :class="{ dim: !p.night_shift_pos }">🌙夜{{ p.night_shift_pos ? p.max_night : 'x' }}</span>
+                  <span v-if="p.weekend_day_shift_pos || p.weekend_night_shift_pos" class="shift-tag weekend-tag">{{ p.weekend_day_shift_pos ? 'w' : '' }}{{ p.weekend_night_shift_pos ? 'n' : '' }}</span>
+                  <span v-if="p.holiday_day_shift_pos || p.holiday_night_shift_pos" class="shift-tag holiday-tag-sm">{{ p.holiday_day_shift_pos ? 'w' : '' }}{{ p.holiday_night_shift_pos ? 'n' : '' }}</span>
                 </div>
               </div>
               <div v-if="data.people.length === 0" class="empty-state">
@@ -88,14 +103,37 @@
 
           <!-- Rules Tab -->
           <div v-if="tab === 'rules'">
+            <div style="font-weight:600;margin-bottom:8px">💼 工作日</div>
             <div class="form-group">
-              <label>每天白班人数</label>
+              <label>白班人数</label>
               <input v-model.number="data.rules.day_shift_per_day" type="number" min="0" @change="saveData" />
             </div>
             <div class="form-group">
-              <label>每天夜班人数</label>
+              <label>夜班人数</label>
               <input v-model.number="data.rules.night_shift_per_day" type="number" min="0" @change="saveData" />
             </div>
+
+            <div style="font-weight:600;margin:12px 0 8px;border-top:1px solid var(--border-color);padding-top:12px">📅 周末（周六日）</div>
+            <div class="form-group">
+              <label>白班人数</label>
+              <input v-model.number="data.rules.weekend_day_shift" type="number" min="0" @change="saveData" />
+            </div>
+            <div class="form-group">
+              <label>夜班人数</label>
+              <input v-model.number="data.rules.weekend_night_shift" type="number" min="0" @change="saveData" />
+            </div>
+
+            <div style="font-weight:600;margin:12px 0 8px;border-top:1px solid var(--border-color);padding-top:12px">🎆 法定节假日</div>
+            <div class="form-group">
+              <label>白班人数</label>
+              <input v-model.number="data.rules.holiday_day_shift" type="number" min="0" @change="saveData" />
+            </div>
+            <div class="form-group">
+              <label>夜班人数</label>
+              <input v-model.number="data.rules.holiday_night_shift" type="number" min="0" @change="saveData" />
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">💡 在日历上点击日期左上角图标可设定节假日/工作日</div>
+
             <div style="margin-top:16px;font-size:12px;color:var(--text-secondary)">
               <p>💡 规则说明：</p>
               <ul style="margin-left:16px;margin-top:4px;line-height:1.8">
@@ -106,6 +144,8 @@
                 <li>休假日期自动跳过</li>
                 <li>规避日期不排班但不标记休假</li>
                 <li>📌 固定的天不会被重新排班</li>
+                <li>法定节假日优先于周末规则</li>
+                <li>在日历上点击日期图标可设定节假日或工作日覆盖</li>
               </ul>
             </div>
           </div>
@@ -210,7 +250,12 @@
             @drop="!isDayPinned(day) && onDrop(day, $event)"
           >
             <div class="day-header">
-              <span class="day-number" :class="{ 'weekend-num': isWeekend(day) }">{{ day }}</span>
+              <span class="day-number" :class="{ 'weekend-num': isWeekend(day) && !isHoliday(day) && !isWorkdayOverride(day), 'holiday-num': isHoliday(day), 'workday-override-num': isWorkdayOverride(day) }">{{ day }}</span>
+              <button
+                class="day-type-btn"
+                @click="cycleDayType(day)"
+                :title="dayTypeLabel(day)"
+              >{{ dayTypeIcon(day) }}</button>
               <button
                 class="pin-btn"
                 :class="{ pinned: isDayPinned(day) }"
@@ -278,6 +323,7 @@ import {
   SavePeople,
   GenerateSchedule,
   ExportXLSX,
+  OpenFile,
   UpdateShiftEntry
 } from '../wailsjs/go/main/App'
 
@@ -290,6 +336,10 @@ interface Person {
   max_night: number
   day_shift_pos: number
   night_shift_pos: number
+  weekend_day_shift_pos: number
+  weekend_night_shift_pos: number
+  holiday_day_shift_pos: number
+  holiday_night_shift_pos: number
 }
 
 interface Vacation {
@@ -307,6 +357,10 @@ interface ShiftEntry {
 interface ScheduleRule {
   day_shift_per_day: number
   night_shift_per_day: number
+  weekend_day_shift: number
+  weekend_night_shift: number
+  holiday_day_shift: number
+  holiday_night_shift: number
 }
 
 interface MonthData {
@@ -315,6 +369,7 @@ interface MonthData {
   rules: ScheduleRule
   schedule: ShiftEntry[]
   pinned_days: string[]
+  day_types: Record<string, string>  // YYYY-MM-DD -> "holiday" | "workday"
   year: number
   month: number
 }
@@ -335,9 +390,10 @@ const globalPeople = ref<Person[]>([])
 const data = ref<MonthData>({
   people: [],
   vacations: [],
-  rules: { day_shift_per_day: 1, night_shift_per_day: 1 },
+  rules: { day_shift_per_day: 1, night_shift_per_day: 1, weekend_day_shift: 1, weekend_night_shift: 1, holiday_day_shift: 1, holiday_night_shift: 1 },
   schedule: [],
   pinned_days: [],
+  day_types: {},
   year: year.value,
   month: month.value,
 })
@@ -350,6 +406,10 @@ const newPerson = ref({
   maxNight: 10,
   dayShiftPos: 1,
   nightShiftPos: 1,
+  weekendDayShiftPos: 1,
+  weekendNightShiftPos: 1,
+  holidayDayShiftPos: 1,
+  holidayNightShiftPos: 1,
 })
 
 const newVacation = ref({
@@ -401,6 +461,52 @@ const pinnedCount = computed(() => data.value.pinned_days.length)
 function isWeekend(day: number): boolean {
   const d = new Date(year.value, month.value - 1, day).getDay()
   return d === 0 || d === 6
+}
+
+function isHoliday(day: number): boolean {
+  return (data.value.day_types || {})[dateStr(day)] === 'holiday'
+}
+
+function getEffectiveDayType(day: number): string {
+  const ds = dateStr(day)
+  const dt = (data.value.day_types || {})[ds]
+  if (dt) return dt  // "holiday" or "workday"
+  return isWeekend(day) ? 'weekend' : 'workday'
+}
+
+function cycleDayType(day: number) {
+  const ds = dateStr(day)
+  if (!data.value.day_types) data.value.day_types = {}
+  const current = data.value.day_types[ds]
+  if (!current) {
+    // No override → set to holiday (or workday if weekend)
+    data.value.day_types[ds] = isWeekend(day) ? 'workday' : 'holiday'
+  } else if (current === 'holiday') {
+    data.value.day_types[ds] = 'workday'
+  } else {
+    // workday override → remove override (back to default)
+    delete data.value.day_types[ds]
+  }
+  saveData()
+}
+
+function isWorkdayOverride(day: number): boolean {
+  return (data.value.day_types || {})[dateStr(day)] === 'workday'
+}
+
+function dayTypeIcon(day: number): string {
+  const t = getEffectiveDayType(day)
+  if (t === 'holiday') return '🎆'
+  if (t === 'weekend') return '📅'
+  return '💼'
+}
+
+function dayTypeLabel(day: number): string {
+  const t = getEffectiveDayType(day)
+  const overrides = (data.value.day_types || {})[dateStr(day)]
+  if (t === 'holiday') return overrides ? '节假日（手动设定）点击切换' : '节假日'
+  if (t === 'weekend') return '周末'
+  return overrides ? '工作日（手动设定）点击切换' : '工作日'
 }
 
 function dateStr(day: number): string {
@@ -590,6 +696,10 @@ function startEdit(p: Person) {
     maxNight: p.max_night,
     dayShiftPos: p.day_shift_pos,
     nightShiftPos: p.night_shift_pos,
+    weekendDayShiftPos: p.weekend_day_shift_pos,
+    weekendNightShiftPos: p.weekend_night_shift_pos,
+    holidayDayShiftPos: p.holiday_day_shift_pos,
+    holidayNightShiftPos: p.holiday_night_shift_pos,
   }
 }
 
@@ -603,6 +713,10 @@ function cancelEdit() {
     maxNight: 10,
     dayShiftPos: 1,
     nightShiftPos: 1,
+    weekendDayShiftPos: 1,
+    weekendNightShiftPos: 1,
+    holidayDayShiftPos: 1,
+    holidayNightShiftPos: 1,
   }
 }
 
@@ -623,6 +737,10 @@ function saveEditPerson() {
     max_night: newPerson.value.maxNight,
     day_shift_pos: newPerson.value.dayShiftPos,
     night_shift_pos: newPerson.value.nightShiftPos,
+    weekend_day_shift_pos: newPerson.value.weekendDayShiftPos,
+    weekend_night_shift_pos: newPerson.value.weekendNightShiftPos,
+    holiday_day_shift_pos: newPerson.value.holidayDayShiftPos,
+    holiday_night_shift_pos: newPerson.value.holidayNightShiftPos,
   }
   data.value.people = [...globalPeople.value]
   saveGlobalPeople()
@@ -646,6 +764,10 @@ function addPerson() {
     max_night: newPerson.value.maxNight,
     day_shift_pos: newPerson.value.dayShiftPos,
     night_shift_pos: newPerson.value.nightShiftPos,
+    weekend_day_shift_pos: newPerson.value.weekendDayShiftPos,
+    weekend_night_shift_pos: newPerson.value.weekendNightShiftPos,
+    holiday_day_shift_pos: newPerson.value.holidayDayShiftPos,
+    holiday_night_shift_pos: newPerson.value.holidayNightShiftPos,
   }
   globalPeople.value.push(person)
   data.value.people = [...globalPeople.value]
@@ -729,6 +851,7 @@ async function generateSchedule() {
       rules: data.value.rules,
       schedule: data.value.schedule,
       pinned_days: data.value.pinned_days,
+      day_types: data.value.day_types || {},
       year: year.value,
       month: month.value,
     })
@@ -743,7 +866,8 @@ async function generateSchedule() {
 async function exportXLSX() {
   try {
     const path = await ExportXLSX(data.value)
-    showToast('✅ 已导出到 ' + path)
+    showToast('✅ 已导出')
+    await OpenFile(path)
   } catch (e: any) {
     showToast('导出失败: ' + e)
   }
