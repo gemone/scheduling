@@ -479,12 +479,13 @@ function cycleDayType(day: number) {
   if (!data.value.day_types) data.value.day_types = {}
   const current = data.value.day_types[ds]
   if (!current) {
-    // No override → set to holiday (or workday if weekend)
-    data.value.day_types[ds] = isWeekend(day) ? 'workday' : 'holiday'
+    // No override → holiday
+    data.value.day_types[ds] = 'holiday'
   } else if (current === 'holiday') {
+    // holiday → workday
     data.value.day_types[ds] = 'workday'
   } else {
-    // workday override → remove override (back to default)
+    // workday → remove override (back to default)
     delete data.value.day_types[ds]
   }
   saveData()
