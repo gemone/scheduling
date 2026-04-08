@@ -30,8 +30,52 @@
         <div class="sidebar-content">
           <!-- People Tab -->
           <div v-if="tab === 'people'">
+            <div class="form-group">
+              <label>姓名</label>
+              <input v-model="newPerson.name" placeholder="输入姓名" @keyup.enter="addPerson" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>强制排满</label>
+                <input v-model.number="newPerson.minTotal" type="number" min="0" />
+              </div>
+              <div class="form-group">
+                <label>月最大总班</label>
+                <input v-model.number="newPerson.maxTotal" type="number" min="1" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>月最大白班</label>
+                <input v-model.number="newPerson.maxDay" type="number" min="0" />
+              </div>
+              <div class="form-group">
+                <label>月最大夜班</label>
+                <input v-model.number="newPerson.maxNight" type="number" min="0" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>可值班类型</label>
+              <div class="checkbox-group" style="flex-direction:column;gap:6px">
+                <div style="font-size:11px;color:var(--text-secondary)">工作日</div>
+                <div class="checkbox-row">
+                  <label><input type="checkbox" v-model="newPerson.dayShiftPos" :true-value="1" :false-value="0" /> ☀白班</label>
+                  <label><input type="checkbox" v-model="newPerson.nightShiftPos" :true-value="1" :false-value="0" /> 🌙夜班</label>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary)">周末</div>
+                <div class="checkbox-row">
+                  <label><input type="checkbox" v-model="newPerson.weekendDayShiftPos" :true-value="1" :false-value="0" /> ☀白班</label>
+                  <label><input type="checkbox" v-model="newPerson.weekendNightShiftPos" :true-value="1" :false-value="0" /> 🌙夜班</label>
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary)">节假日</div>
+                <div class="checkbox-row">
+                  <label><input type="checkbox" v-model="newPerson.holidayDayShiftPos" :true-value="1" :false-value="0" /> ☀白班</label>
+                  <label><input type="checkbox" v-model="newPerson.holidayNightShiftPos" :true-value="1" :false-value="0" /> 🌙夜班</label>
+                </div>
+              </div>
+            </div>
             <div class="person-toolbar">
-              <button class="btn btn-primary" style="flex:1" @click="openPersonModal(null)">➕ 添加人员</button>
+              <button class="btn btn-primary" style="flex:1" @click="addPerson">➕ 添加</button>
               <button class="btn btn-outline" @click="importPeople" title="导入人员">📥</button>
               <button class="btn btn-outline" @click="exportPeople" title="导出人员">📤</button>
             </div>
@@ -266,7 +310,7 @@
     <!-- Person Modal -->
     <div class="modal-overlay" v-if="personModal.show" @click.self="personModal.show = false">
       <div class="modal">
-        <h3>{{ personModal.isAdd ? '添加人员' : '编辑人员' }}</h3>
+        <h3>编辑人员</h3>
         <div class="form-group">
           <label>姓名</label>
           <input v-model="personModal.name" placeholder="输入姓名" @keyup.enter="savePersonModal" />
@@ -426,8 +470,21 @@ data.value.rules = globalRules.value
 
 const personModal = ref({
   show: false,
-  isAdd: true,
   editId: null as string | null,
+  name: '',
+  minTotal: 0,
+  maxTotal: 22,
+  maxDay: 15,
+  maxNight: 10,
+  dayShiftPos: 1,
+  nightShiftPos: 1,
+  weekendDayShiftPos: 1,
+  weekendNightShiftPos: 1,
+  holidayDayShiftPos: 1,
+  holidayNightShiftPos: 1,
+})
+
+const newPerson = ref({
   name: '',
   minTotal: 0,
   maxTotal: 22,
@@ -716,63 +773,21 @@ async function deleteShift() {
 
 let personIdCounter = 0
 
-function resetPersonModal() {
+function openPersonModal(p: Person) {
   personModal.value = {
-    ...personModal.value,
-    show: false,
-    editId: null,
-    isAdd: true,
-    name: '',
-    minTotal: 0,
-    maxTotal: 22,
-    maxDay: 15,
-    maxNight: 10,
-    dayShiftPos: 1,
-    nightShiftPos: 1,
-    weekendDayShiftPos: 1,
-    weekendNightShiftPos: 1,
-    holidayDayShiftPos: 1,
-    holidayNightShiftPos: 1,
-  }
-}
-
-function openPersonModal(p: Person | null) {
-  if (p) {
-    personModal.value = {
-      ...personModal.value,
-      show: true,
-      isAdd: false,
-      editId: p.id,
-      name: p.name,
-      minTotal: p.min_total,
-      maxTotal: p.max_total,
-      maxDay: p.max_day,
-      maxNight: p.max_night,
-      dayShiftPos: p.day_shift_pos,
-      nightShiftPos: p.night_shift_pos,
-      weekendDayShiftPos: p.weekend_day_shift_pos,
-      weekendNightShiftPos: p.weekend_night_shift_pos,
-      holidayDayShiftPos: p.holiday_day_shift_pos,
-      holidayNightShiftPos: p.holiday_night_shift_pos,
-    }
-  } else {
-    personModal.value = {
-      ...personModal.value,
-      show: true,
-      isAdd: true,
-      editId: null,
-      name: '',
-      minTotal: 0,
-      maxTotal: 22,
-      maxDay: 15,
-      maxNight: 10,
-      dayShiftPos: 1,
-      nightShiftPos: 1,
-      weekendDayShiftPos: 1,
-      weekendNightShiftPos: 1,
-      holidayDayShiftPos: 1,
-      holidayNightShiftPos: 1,
-    }
+    show: true,
+    editId: p.id,
+    name: p.name,
+    minTotal: p.min_total,
+    maxTotal: p.max_total,
+    maxDay: p.max_day,
+    maxNight: p.max_night,
+    dayShiftPos: p.day_shift_pos,
+    nightShiftPos: p.night_shift_pos,
+    weekendDayShiftPos: p.weekend_day_shift_pos,
+    weekendNightShiftPos: p.weekend_night_shift_pos,
+    holidayDayShiftPos: p.holiday_day_shift_pos,
+    holidayNightShiftPos: p.holiday_night_shift_pos,
   }
 }
 
@@ -782,47 +797,56 @@ function savePersonModal() {
     showToast('请输入姓名')
     return
   }
-  if (m.isAdd) {
-    const id = `p_${Date.now()}_${personIdCounter++}`
-    const person: Person = {
-      id,
-      name: m.name.trim(),
-      min_total: m.minTotal,
-      max_total: m.maxTotal,
-      max_day: m.maxDay,
-      max_night: m.maxNight,
-      day_shift_pos: m.dayShiftPos,
-      night_shift_pos: m.nightShiftPos,
-      weekend_day_shift_pos: m.weekendDayShiftPos,
-      weekend_night_shift_pos: m.weekendNightShiftPos,
-      holiday_day_shift_pos: m.holidayDayShiftPos,
-      holiday_night_shift_pos: m.holidayNightShiftPos,
-    }
-    globalPeople.value.push(person)
-    showToast('已添加人员')
-  } else if (m.editId) {
-    const idx = globalPeople.value.findIndex((p: Person) => p.id === m.editId)
-    if (idx === -1) return
-    globalPeople.value[idx] = {
-      ...globalPeople.value[idx],
-      name: m.name.trim(),
-      min_total: m.minTotal,
-      max_total: m.maxTotal,
-      max_day: m.maxDay,
-      max_night: m.maxNight,
-      day_shift_pos: m.dayShiftPos,
-      night_shift_pos: m.nightShiftPos,
-      weekend_day_shift_pos: m.weekendDayShiftPos,
-      weekend_night_shift_pos: m.weekendNightShiftPos,
-      holiday_day_shift_pos: m.holidayDayShiftPos,
-      holiday_night_shift_pos: m.holidayNightShiftPos,
-    }
-    showToast('已更新人员')
+  if (!m.editId) return
+  const idx = globalPeople.value.findIndex((p: Person) => p.id === m.editId)
+  if (idx === -1) return
+  globalPeople.value[idx] = {
+    ...globalPeople.value[idx],
+    name: m.name.trim(),
+    min_total: m.minTotal,
+    max_total: m.maxTotal,
+    max_day: m.maxDay,
+    max_night: m.maxNight,
+    day_shift_pos: m.dayShiftPos,
+    night_shift_pos: m.nightShiftPos,
+    weekend_day_shift_pos: m.weekendDayShiftPos,
+    weekend_night_shift_pos: m.weekendNightShiftPos,
+    holiday_day_shift_pos: m.holidayDayShiftPos,
+    holiday_night_shift_pos: m.holidayNightShiftPos,
   }
   data.value.people = [...globalPeople.value]
   saveGlobalPeople()
   saveData()
-  resetPersonModal()
+  personModal.value.show = false
+  showToast('已更新人员')
+}
+
+function addPerson() {
+  if (!newPerson.value.name.trim()) {
+    showToast('请输入姓名')
+    return
+  }
+  const id = `p_${Date.now()}_${personIdCounter++}`
+  const person: Person = {
+    id,
+    name: newPerson.value.name.trim(),
+    min_total: newPerson.value.minTotal,
+    max_total: newPerson.value.maxTotal,
+    max_day: newPerson.value.maxDay,
+    max_night: newPerson.value.maxNight,
+    day_shift_pos: newPerson.value.dayShiftPos,
+    night_shift_pos: newPerson.value.nightShiftPos,
+    weekend_day_shift_pos: newPerson.value.weekendDayShiftPos,
+    weekend_night_shift_pos: newPerson.value.weekendNightShiftPos,
+    holiday_day_shift_pos: newPerson.value.holidayDayShiftPos,
+    holiday_night_shift_pos: newPerson.value.holidayNightShiftPos,
+  }
+  globalPeople.value.push(person)
+  data.value.people = [...globalPeople.value]
+  newPerson.value.name = ''
+  saveGlobalPeople()
+  saveData()
+  showToast('已添加人员')
 }
 
 function removePerson(id: string) {
