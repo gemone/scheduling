@@ -76,8 +76,9 @@
             </div>
             <div class="person-toolbar">
               <button class="btn btn-primary" style="flex:1" @click="addPerson">➕ 添加</button>
-              <button class="btn btn-outline" @click="importPeople" title="导入人员">📥</button>
-              <button class="btn btn-outline" @click="exportPeople" title="导出人员">📤</button>
+              <button class="btn btn-outline" @click="downloadTemplate" title="下载导入模板">📋</button>
+              <button class="btn btn-outline" @click="importPeople" title="导入人员XLSX">📥</button>
+              <button class="btn btn-outline" @click="exportPeople" title="导出人员XLSX">📤</button>
             </div>
 
             <div class="person-list" style="margin-top:12px">
@@ -382,7 +383,10 @@ import {
   GenerateSchedule,
   ExportXLSX,
   OpenFile,
-  UpdateShiftEntry
+  UpdateShiftEntry,
+  ExportPeopleXLSX,
+  ParsePeopleXLSXBase64,
+  DownloadPeopleTemplate
 } from '../wailsjs/go/main/App'
 
 interface Person {
@@ -857,42 +861,48 @@ function removePerson(id: string) {
   saveData()
 }
 
-function exportPeople() {
-  const json = JSON.stringify(globalPeople.value, null, 2)
-  const blob = new Blob([json], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'people.json'
-  a.click()
-  URL.revokeObjectURL(url)
-  showToast('📤 已导出人员列表')
+async function exportPeople() {
+  try {
+    const path = await ExportPeopleXLSX(globalPeople.value)
+    showToast('📤 已导出到 ' + path)
+  } catch (e: any) {
+    showToast('导出失败: ' + e)
+  }
+}
+
+async function downloadTemplate() {
+  try {
+    const path = await DownloadPeopleTemplate()
+    await OpenFile(path)
+    showToast('📋 模板已下载')
+  } catch (e: any) {
+    showToast('下载模板失败: ' + e)
+  }
 }
 
 function importPeople() {
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = '.json'
+  input.accept = '.xlsx,.xls'
   input.onchange = async (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0]
     if (!file) return
     try {
-      const text = await file.text()
-      const imported: Person[] = JSON.parse(text)
-      if (!Array.isArray(imported)) {
-        showToast('格式错误：需要数组格式')
+      const buf = await file.arrayBuffer()
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
+      const imported: Person[] = await ParsePeopleXLSXBase64(b64)
+      if (!imported || imported.length === 0) {
+        showToast('未找到有效人员数据')
         return
       }
-      // Merge: add new people by name, update existing by name
       let added = 0
       let updated = 0
       for (const p of imported) {
         if (!p.name) continue
-        // Ensure ID exists
         if (!p.id) p.id = `p_${Date.now()}_${personIdCounter++}`
         const existing = globalPeople.value.findIndex((ep: Person) => ep.name === p.name)
         if (existing >= 0) {
-          globalPeople.value[existing] = { ...globalPeople.value[existing], ...p }
+          globalPeople.value[existing] = { ...globalPeople.value[existing], ...p, id: globalPeople.value[existing].id }
           updated++
         } else {
           globalPeople.value.push(p)
@@ -903,8 +913,8 @@ function importPeople() {
       saveGlobalPeople()
       saveData()
       showToast(`📥 导入完成：新增${added}人，更新${updated}人`)
-    } catch (err) {
-      showToast('导入失败：文件格式错误')
+    } catch (err: any) {
+      showToast('导入失败: ' + (err.message || err))
     }
   }
   input.click()

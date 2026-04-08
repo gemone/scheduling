@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -660,6 +661,238 @@ func (a *App) SaveExportFile(content, filename string) error {
 
 func (a *App) OpenFile(path string) error {
 	return browser.OpenFile(path)
+}
+
+// ==================== 人员 XLSX 导入导出 ====================
+
+func (a *App) ExportPeopleXLSX(people []Person) (string, error) {
+	f := excelize.NewFile()
+	defer f.Close()
+	sheet := "人员列表"
+	f.SetSheetName("Sheet1", sheet)
+
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Size: 11, Color: "FFFFFF"},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4f46e5"}, Pattern: 1},
+	})
+	centerStyle, _ := f.NewStyle(&excelize.Style{
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+
+	headers := []string{"姓名", "强制排满次数", "月最大总班次", "月最大白班", "月最大夜班",
+		"工作日白班", "工作日夜班", "周末白班", "周末夜班", "节假日白班", "节假日夜班"}
+	for i, h := range headers {
+		col, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheet, col, h)
+		f.SetCellStyle(sheet, col, col, headerStyle)
+	}
+
+	for row, p := range people {
+		r := row + 2
+		vals := []interface{}{
+			p.Name, p.MinTotal, p.MaxTotal, p.MaxDay, p.MaxNight,
+			boolStr(p.DayShiftPos), boolStr(p.NightShiftPos),
+			boolStr(p.WeekendDayShiftPos), boolStr(p.WeekendNightShiftPos),
+			boolStr(p.HolidayDayShiftPos), boolStr(p.HolidayNightShiftPos),
+		}
+		for i, v := range vals {
+			col, _ := excelize.CoordinatesToCellName(i+1, r)
+			f.SetCellValue(sheet, col, v)
+			f.SetCellStyle(sheet, col, col, centerStyle)
+		}
+	}
+
+	// Column widths
+	widths := []float64{12, 14, 14, 12, 12, 10, 10, 10, 10, 10, 10}
+	for i, w := range widths {
+		colName, _ := excelize.ColumnNumberToName(i + 1)
+		f.SetColWidth(sheet, colName, colName, w)
+	}
+
+	home, _ := os.UserHomeDir()
+	downloadDir := filepath.Join(home, "Downloads")
+	os.MkdirAll(downloadDir, 0755)
+	filePath := filepath.Join(downloadDir, "人员列表.xlsx")
+	if err := f.SaveAs(filePath); err != nil {
+		return "", err
+	}
+	return filePath, nil
+}
+
+func (a *App) ImportPeopleXLSX() ([]Person, error) {
+	// Use runtime file dialog
+	return nil, fmt.Errorf("use frontend dialog")
+}
+
+func (a *App) ParsePeopleXLSX(filePath string) ([]Person, error) {
+	return nil, fmt.Errorf("use ParsePeopleXLSXBase64")
+}
+
+func (a *App) ParsePeopleXLSXBase64(b64 string) ([]Person, error) {
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, fmt.Errorf("base64解码失败: %v", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "import_*.xlsx")
+	if err != nil {
+		return nil, fmt.Errorf("创建临时文件失败: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Write(data)
+	tmpFile.Close()
+
+	return parsePeopleXLSXFromFile(tmpFile.Name())
+}
+
+func parsePeopleXLSXFromFile(filePath string) ([]Person, error) {
+	f, err := excelize.OpenFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("无法打开文件: %v", err)
+	}
+	defer f.Close()
+
+	sheet := f.GetSheetName(0)
+	rows, err := f.GetRows(sheet)
+	if err != nil {
+		return nil, fmt.Errorf("无法读取工作表: %v", err)
+	}
+
+	if len(rows) < 2 {
+		return nil, fmt.Errorf("文件为空或没有数据行")
+	}
+
+	// Parse header to find column indices
+	header := rows[0]
+	colMap := make(map[string]int)
+	for i, h := range header {
+		colMap[strings.TrimSpace(h)] = i
+	}
+
+	var people []Person
+	for rowIdx := 1; rowIdx < len(rows); rowIdx++ {
+		row := rows[rowIdx]
+		name := getCol(row, colMap, "姓名")
+		if name == "" {
+			continue
+		}
+		p := Person{
+			ID:                   fmt.Sprintf("p_import_%d_%d", time.Now().UnixNano(), rowIdx),
+			Name:                 name,
+			MinTotal:             getColInt(row, colMap, "强制排满次数"),
+			MaxTotal:             getColIntDef(row, colMap, "月最大总班次", 22),
+			MaxDay:               getColIntDef(row, colMap, "月最大白班", 15),
+			MaxNight:             getColIntDef(row, colMap, "月最大夜班", 10),
+			DayShiftPos:          parseBool(getCol(row, colMap, "工作日白班")),
+			NightShiftPos:        parseBool(getCol(row, colMap, "工作日夜班")),
+			WeekendDayShiftPos:   parseBool(getCol(row, colMap, "周末白班")),
+			WeekendNightShiftPos: parseBool(getCol(row, colMap, "周末夜班")),
+			HolidayDayShiftPos:   parseBool(getCol(row, colMap, "节假日白班")),
+			HolidayNightShiftPos: parseBool(getCol(row, colMap, "节假日夜班")),
+		}
+		people = append(people, p)
+	}
+	return people, nil
+}
+
+func (a *App) DownloadPeopleTemplate() (string, error) {
+	f := excelize.NewFile()
+	defer f.Close()
+	sheet := "人员导入模板"
+	f.SetSheetName("Sheet1", sheet)
+
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Size: 11, Color: "FFFFFF"},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4f46e5"}, Pattern: 1},
+	})
+	hintStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Color: "888888", Size: 10},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+
+	headers := []string{"姓名", "强制排满次数", "月最大总班次", "月最大白班", "月最大夜班",
+		"工作日白班", "工作日夜班", "周末白班", "周末夜班", "节假日白班", "节假日夜班"}
+	hints := []string{"张三", "0", "22", "15", "10", "是", "是", "是", "否", "是", "否"}
+
+	for i, h := range headers {
+		col, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheet, col, h)
+		f.SetCellStyle(sheet, col, col, headerStyle)
+	}
+	for i, h := range hints {
+		col, _ := excelize.CoordinatesToCellName(i+1, 2)
+		f.SetCellValue(sheet, col, h)
+		f.SetCellStyle(sheet, col, col, hintStyle)
+	}
+
+	// Instructions row
+	f.SetCellValue(sheet, "A4", "说明：")
+	f.SetCellValue(sheet, "A5", "1. 姓名：必填")
+	f.SetCellValue(sheet, "A6", "2. 强制排满次数：0=不强制，填数字表示最少排满多少次")
+	f.SetCellValue(sheet, "A7", "3. 月最大总班次/白班/夜班：限制每月最多排班次数")
+	f.SetCellValue(sheet, "A8", "4. 班次类型：填\"是\"或\"否\"，也可以填 1 或 0")
+
+	widths := []float64{12, 14, 14, 12, 12, 10, 10, 10, 10, 10, 10}
+	for i, w := range widths {
+		colName, _ := excelize.ColumnNumberToName(i + 1)
+		f.SetColWidth(sheet, colName, colName, w)
+	}
+
+	home, _ := os.UserHomeDir()
+	downloadDir := filepath.Join(home, "Downloads")
+	os.MkdirAll(downloadDir, 0755)
+	filePath := filepath.Join(downloadDir, "人员导入模板.xlsx")
+	if err := f.SaveAs(filePath); err != nil {
+		return "", err
+	}
+	return filePath, nil
+}
+
+func boolStr(v int) string {
+	if v == 1 {
+		return "是"
+	}
+	return "否"
+}
+
+func parseBool(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "是" || s == "1" || strings.EqualFold(s, "yes") || strings.EqualFold(s, "true") {
+		return 1
+	}
+	return 0
+}
+
+func getCol(row []string, colMap map[string]int, key string) string {
+	idx, ok := colMap[key]
+	if !ok || idx >= len(row) {
+		return ""
+	}
+	return strings.TrimSpace(row[idx])
+}
+
+func getColInt(row []string, colMap map[string]int, key string) int {
+	s := getCol(row, colMap, key)
+	if s == "" {
+		return 0
+	}
+	n := 0
+	fmt.Sscanf(s, "%d", &n)
+	return n
+}
+
+func getColIntDef(row []string, colMap map[string]int, key string, def int) int {
+	s := getCol(row, colMap, key)
+	if s == "" {
+		return def
+	}
+	n := 0
+	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
+		return def
+	}
+	return n
 }
 
 // ==================== 手动编辑 ====================
