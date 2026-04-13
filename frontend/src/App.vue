@@ -366,6 +366,19 @@
 
     <!-- Toast -->
     <div class="toast" v-if="toastMessage">{{ toastMessage }}</div>
+
+    <!-- Regenerate Confirm Modal -->
+    <div class="modal-overlay" v-if="regenModal.show" @click.self="regenModal.show = false">
+      <div class="modal">
+        <h3>已有排班数据</h3>
+        <p style="margin:12px 0;color:var(--text-secondary)">请选择重新生成方式：</p>
+        <div class="modal-actions" style="flex-direction:column;gap:8px">
+          <button class="btn btn-primary" style="width:100%" @click="doGenerate('pinned')">📌 保留已固定，只重排未固定的天</button>
+          <button class="btn btn-warning" style="width:100%" @click="doGenerate('all')">🔄 全部重新排班（清除所有固定）</button>
+          <button class="btn btn-outline" style="width:100%" @click="regenModal.show = false">取消</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -444,6 +457,7 @@ const month = ref(now.getMonth() + 1)
 const tab = ref('people')
 const toastMessage = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+const regenModal = ref({ show: false })
 
 // Global people (shared across all months)
 const globalPeople = ref<Person[]>([])
@@ -966,18 +980,17 @@ async function generateSchedule() {
     showToast('请先添加人员')
     return
   }
-  const hasExisting = data.value.schedule.length > 0
-  if (hasExisting) {
-    const choice = prompt(
-      '已有排班数据，请选择：\n\n1 = 保留已固定天数，只重新排未固定的天\n2 = 全部重新排班（清除所有固定）\n3 = 放弃\n\n请输入 1、2 或 3：'
-    )
-    if (choice === '1') {
-      // Keep pinned days, only regenerate unpinned
-    } else if (choice === '2') {
-      data.value.pinned_days = []
-    } else {
-      return
-    }
+  if (data.value.schedule.length > 0) {
+    regenModal.value.show = true
+    return
+  }
+  await doGenerate('all')
+}
+
+async function doGenerate(mode: 'pinned' | 'all') {
+  regenModal.value.show = false
+  if (mode === 'all') {
+    data.value.pinned_days = []
   }
   try {
     const result = await GenerateSchedule({
