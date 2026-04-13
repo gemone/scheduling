@@ -397,11 +397,59 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 		}
 	}
 
+	// 统计每个人在周末/节假日/工作日分别已排的白班和夜班次数（用于均衡分配）
+	typeCountDay := make(map[string]map[string]int)   // pid -> effectiveType -> count
+	typeCountNight := make(map[string]map[string]int) // pid -> effectiveType -> count
+	for _, p := range data.People {
+		typeCountDay[p.ID] = map[string]int{}
+		typeCountNight[p.ID] = map[string]int{}
+	}
+	// 从 pinned 的排班中初始化 typeCount
+	for _, entry := range data.Schedule {
+		if !pinnedSet[entry.Date] {
+			continue
+		}
+		pid := ""
+		for _, p := range data.People {
+			if p.Name == entry.Person {
+				pid = p.ID
+				break
+			}
+		}
+		if pid == "" {
+			continue
+		}
+		// 解析 pinned 条目的日期类型
+		parts := strings.Split(entry.Date, "-")
+		if len(parts) == 3 {
+			var pDay int
+			fmt.Sscanf(parts[2], "%d", &pDay)
+			pt := time.Date(data.Year, time.Month(data.Month), pDay, 0, 0, 0, 0, time.UTC)
+			pdow := pt.Weekday()
+			pType := "workday"
+			if data.DayTypes != nil {
+				if dt, ok := data.DayTypes[entry.Date]; ok {
+					pType = dt
+				} else if pdow == time.Saturday || pdow == time.Sunday {
+					pType = "weekend"
+				}
+			} else if pdow == time.Saturday || pdow == time.Sunday {
+				pType = "weekend"
+			}
+			switch entry.ShiftType {
+			case DayShift:
+				typeCountDay[pid][pType]++
+			case NightShift:
+				typeCountNight[pid][pType]++
+			}
+		}
+	}
+
 	// 分轮次排班：第 round 轮为每天排第 round+1 个人
 	for round := 0; round < maxRounds; round++ {
 		// --- 白班轮次 ---
 		for _, di := range dayInfos {
-			if dayAssignedCount[di.DateStr] >= di.DayCount {
+			if di.DayCount == 0 || dayAssignedCount[di.DateStr] >= di.DayCount {
 				continue
 			}
 
@@ -424,15 +472,26 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 				dayCandidates = append(dayCandidates, pid)
 			}
 
+			if len(dayCandidates) == 0 {
+				continue
+			}
+
 			sort.SliceStable(dayCandidates, func(i, j int) bool {
 				pi := personMap[dayCandidates[i]]
 				pj := personMap[dayCandidates[j]]
 				ci := counts[dayCandidates[i]]
 				cj := counts[dayCandidates[j]]
+				// 优先：未达最低次数
 				needI := pi.MinTotal > 0 && ci.Total < pi.MinTotal
 				needJ := pj.MinTotal > 0 && cj.Total < pj.MinTotal
 				if needI != needJ {
 					return needI
+				}
+				// 优先：该类型日排班次数少（均衡周末/节假日分配）
+				tcI := typeCountDay[dayCandidates[i]][di.EffectiveType]
+				tcJ := typeCountDay[dayCandidates[j]][di.EffectiveType]
+				if tcI != tcJ {
+					return tcI < tcJ
 				}
 				if ci.Total != cj.Total {
 					return ci.Total < cj.Total
@@ -443,6 +502,7 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 				return rng.Intn(2) == 0
 			})
 
+			assigned := false
 			for _, pid := range dayCandidates {
 				p := personMap[pid]
 				pc := counts[pid]
@@ -454,16 +514,35 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 					})
 					pc.Total++
 					pc.Day++
+					typeCountDay[pid][di.EffectiveType]++
 					dayAssignedCount[di.DateStr]++
 					allAssignedSet[di.DateStr][pid] = true
+					assigned = true
 					break
 				}
+			}
+
+			// 保底：round 0 且需求>0但无人通过正常上限检查时，放宽限制强排第一个候选人
+			if !assigned && round == 0 && dayAssignedCount[di.DateStr] == 0 {
+				pid := dayCandidates[0]
+				p := personMap[pid]
+				pc := counts[pid]
+				schedule = append(schedule, ShiftEntry{
+					Date:      di.DateStr,
+					Person:    p.Name,
+					ShiftType: DayShift,
+				})
+				pc.Total++
+				pc.Day++
+				typeCountDay[pid][di.EffectiveType]++
+				dayAssignedCount[di.DateStr]++
+				allAssignedSet[di.DateStr][pid] = true
 			}
 		}
 
 		// --- 夜班轮次 ---
 		for _, di := range dayInfos {
-			if nightAssignedCount[di.DateStr] >= di.NightCount {
+			if di.NightCount == 0 || nightAssignedCount[di.DateStr] >= di.NightCount {
 				continue
 			}
 
@@ -478,6 +557,10 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 				nightCandidates = append(nightCandidates, pid)
 			}
 
+			if len(nightCandidates) == 0 {
+				continue
+			}
+
 			sort.SliceStable(nightCandidates, func(i, j int) bool {
 				pi := personMap[nightCandidates[i]]
 				pj := personMap[nightCandidates[j]]
@@ -488,6 +571,12 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 				if needI != needJ {
 					return needI
 				}
+				// 优先：该类型日夜班次数少（均衡周末/节假日分配）
+				tcI := typeCountNight[nightCandidates[i]][di.EffectiveType]
+				tcJ := typeCountNight[nightCandidates[j]][di.EffectiveType]
+				if tcI != tcJ {
+					return tcI < tcJ
+				}
 				if ci.Total != cj.Total {
 					return ci.Total < cj.Total
 				}
@@ -497,6 +586,7 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 				return rng.Intn(2) == 0
 			})
 
+			assigned := false
 			for _, pid := range nightCandidates {
 				p := personMap[pid]
 				pc := counts[pid]
@@ -508,14 +598,37 @@ func (a *App) GenerateSchedule(data MonthData) (*MonthData, error) {
 					})
 					pc.Total++
 					pc.Night++
+					typeCountNight[pid][di.EffectiveType]++
 					nightAssignedCount[di.DateStr]++
 					allAssignedSet[di.DateStr][pid] = true
 					if nightOnDate[di.DateStr] == nil {
 						nightOnDate[di.DateStr] = map[string]bool{}
 					}
 					nightOnDate[di.DateStr][p.Name] = true
+					assigned = true
 					break
 				}
+			}
+
+			// 保底：round 0 且需求>0但无人通过正常上限检查时，放宽限制强排第一个候选人
+			if !assigned && round == 0 && nightAssignedCount[di.DateStr] == 0 {
+				pid := nightCandidates[0]
+				p := personMap[pid]
+				pc := counts[pid]
+				schedule = append(schedule, ShiftEntry{
+					Date:      di.DateStr,
+					Person:    p.Name,
+					ShiftType: NightShift,
+				})
+				pc.Total++
+				pc.Night++
+				typeCountNight[pid][di.EffectiveType]++
+				nightAssignedCount[di.DateStr]++
+				allAssignedSet[di.DateStr][pid] = true
+				if nightOnDate[di.DateStr] == nil {
+					nightOnDate[di.DateStr] = map[string]bool{}
+				}
+				nightOnDate[di.DateStr][p.Name] = true
 			}
 		}
 	}

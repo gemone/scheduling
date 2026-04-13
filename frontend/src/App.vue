@@ -379,6 +379,18 @@
         </div>
       </div>
     </div>
+
+    <!-- Unpin All Confirm Modal -->
+    <div class="modal-overlay" v-if="unpinModal.show" @click.self="unpinModal.show = false">
+      <div class="modal">
+        <h3>取消全部固定</h3>
+        <p style="margin:12px 0;color:var(--text-secondary)">确定要取消所有已固定的排班吗？取消固定后，重新生成排班时这些天会被重新分配。</p>
+        <div class="modal-actions">
+          <button class="btn btn-warning" @click="doUnpinAll">确认取消固定</button>
+          <button class="btn btn-outline" @click="unpinModal.show = false">取消</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -458,6 +470,7 @@ const tab = ref('people')
 const toastMessage = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 const regenModal = ref({ show: false })
+const unpinModal = ref({ show: false })
 
 // Global people (shared across all months)
 const globalPeople = ref<Person[]>([])
@@ -554,10 +567,21 @@ const firstDayOffset = computed(() => {
 
 const hasSchedule = computed(() => data.value.schedule.length > 0)
 
+const scheduledDates = computed(() => {
+  const dates = new Set<string>()
+  for (const e of data.value.schedule) {
+    dates.add(e.date)
+  }
+  return dates
+})
+
 const allPinned = computed(() => {
-  if (data.value.schedule.length === 0) return false
-  const total = daysInMonth.value
-  return data.value.pinned_days.length >= total
+  if (scheduledDates.value.size === 0) return false
+  // Check that every date with schedule entries is pinned
+  for (const d of scheduledDates.value) {
+    if (!data.value.pinned_days.includes(d)) return false
+  }
+  return true
 })
 
 const pinnedCount = computed(() => data.value.pinned_days.length)
@@ -675,18 +699,21 @@ async function pinAll() {
     return
   }
   if (allPinned.value) {
-    // Unpin all
-    data.value.pinned_days = []
+    // Show confirmation modal before unpinning
+    unpinModal.value.show = true
   } else {
     // Pin all days that have schedule entries
-    const dates = new Set<string>()
-    for (const e of data.value.schedule) {
-      dates.add(e.date)
-    }
-    data.value.pinned_days = Array.from(dates)
+    data.value.pinned_days = Array.from(scheduledDates.value)
+    await saveData()
+    showToast('📌 已固定所有排班')
   }
+}
+
+async function doUnpinAll() {
+  unpinModal.value.show = false
+  data.value.pinned_days = []
   await saveData()
-  showToast(allPinned.value ? '📌 已取消全部固定' : '📌 已固定所有排班')
+  showToast('📌 已取消全部固定')
 }
 
 // ==================== Drag & Drop ====================
